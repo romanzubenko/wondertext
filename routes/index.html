@@ -1,0 +1,246 @@
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>WonderText</title>
+	<link href="css/bootstrap.min.css" rel="stylesheet" />
+	<link href="css/font-awesome.css" rel="stylesheet" />
+	<link href="css/hallo.css" rel="stylesheet" />
+	<link href="css/jquery-ui-1.8.16.custom.css" rel="stylesheet" />
+	<script src="js/jquery-1.9.0.js"></script>
+	<script src="js/jquery-ui-1.10.0.custom.min.js"></script>
+	<script src="js/hallo.js"></script>
+<style>
+*{
+	font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, FreeSerif, serif !important;
+}
+header {
+	margin: 0;
+	text-align: center;
+	padding-bottom: 8px;
+	padding-top: 8px;
+	position: relative;
+	font-weight: 200;
+	z-index: 1500;
+	box-shadow: 1px 1px 4px 0px #111;
+	background: url(img/ecailles.png) repeat;
+}
+header h1, header h5 {
+	font-weight: 400 !important;
+}
+#essay_editor {
+	float: left;
+	width: 70%;
+	border-right:1px solid #cdcdcd;
+	position: relative;
+	background: url(img/subtle_dots.png) repeat;
+}
+.hallotoolbar {
+	width: 303px !important;
+	margin: 0 auto;
+	margin-bottom: 20px;
+}
+.editable {
+	box-shadow: 0px 0px 7px 0px #444;
+	z-index: 3;
+}
+.editable_hidden {
+	position: absolute;
+	color: #999;
+	z-index: 1;
+	background-color: #fff;
+}
+.essay {
+	box-sizing: border-box;
+	padding: 10px;
+	padding-top: 43px;
+	width: 80%;
+	margin-left: 10%;
+	min-height: 80%;
+	position: absolute;
+	top: 65px;
+}
+.essay p{
+	height: 28px;
+}
+div.right{
+	float: left;
+	-moz-box-shadow:    inset 3px -7px 17px #dcdcdc;
+	-webkit-box-shadow: inset 3px -7px 17px #dcdcdc;
+	box-shadow:        inset 3px -7px 17px #dcdcdc;
+	background-color: #fafafa;
+	background: url(img/subtle_dots.png) repeat;
+	height: 100%;
+}
+.suggestions {
+	min-height: 100px;
+	margin-top: 0px;
+	margin-bottom: 0.5em;
+	font-size: 16pt;
+	line-height: 21pt;
+	width: 100%;
+	height: 49%;
+	overflow: scroll;
+}
+.suggestions.autocomplete {
+	border-bottom: 1px solid #cdcdcd;
+}
+
+.suggestions h3 {
+	margin-top: 10px;
+	color: #444;
+	text-align: center;
+	font-weight: 400;
+}
+
+.suggestions ul li{
+	font-size: 16px;
+}
+
+div.hallotoolbar {
+	padding-top: 20px;
+}
+</style>
+<script>
+
+$(function(){
+	$('div.right').css({'width':($(window).width()-$("#essay_editor").width()-2)+'px'});
+	$("#essay_editor").height($(window).height() - $("header").height() + 110);
+	$(".essay").css("min-height", $(window).height() - $("header").height() + 20);
+
+	$(window).resize(function(){
+		$('div.right').css({'width':($(window).width()-$("#essay_editor").width()-2)+'px'});
+		$("#essay_editor").height($(window).height() - $("header").height() + 110);
+		$(".essay").css("min-height",$(window).height() - $("header").height() + 20);
+	});
+});
+
+$(document).ready(function(){
+	// Instantiate Hallo Editor
+	jQuery('.editable').hallo({
+		plugins: {
+			'halloformat': {},
+			'halloblock': {},
+			'hallojustify': {},
+			'hallolists': {}
+		},
+		showAlways: true
+	});
+
+	var	essayEditor = {
+		area: $("div.editable"),
+		lowLevel: $("#lowLevel"),
+		lastSent: "",
+    	lastSentText:"",
+		lastSuggestions: [],
+		lastSuggestionsPython: [],
+		getLastWords: function() {
+			var	newText = /[\.\?\!]?([^\.\?\!]+)$/.exec(this.area.text()),
+				words = newText[1].split(/\s{1,}/);
+			return words.slice(-4, -1).join(" ").trim();
+		},
+		sendWords: function() {
+			var words = essayEditor.getLastWords();
+			if (words != essayEditor.lastSent) {
+				essayEditor.lastSent = words;
+				$.ajax({
+					url: "/ajax/suggestions",
+					type: "POST",
+					data: "sentence="+words,
+					async: true,
+					dataType: "json",
+					success: function(out) {
+						essayEditor.updateSuggestions(out);
+					}
+				});
+			}
+		},
+		sendText: function() {
+			var text = essayEditor.area.text();
+			if (text != essayEditor.lastSentText) {
+				essayEditor.lastSentText = text;
+				$.ajax({
+					url: "/ajax/suggestions2",
+					type: "POST",
+					data: "sentence="+text,
+					async: true,
+					success: function(out) {
+						var jsona = out.replace(/\'/g,'"');
+							jsona = JSON.parse( jsona );
+						console.log(jsona);
+						essayEditor.updateSuggestionsPython(jsona);
+					}
+				});
+			}
+		},
+		updateBG: function(autocomp){
+			$(".editable_hidden").html($(".editable").html());
+			//if( autocomp!=undefined )
+			//	$(".editable_hidden p").append(" "+autocomp.trim());
+		},
+
+		updateSuggestions: function(suggestions){
+			if (essayEditor.lastSuggestions == suggestions) {
+				return;
+			}
+			$(".autocomplete ul").fadeOut(function() {
+				$(".autocomplete ul").html("");
+				essayEditor.lastSuggestions = suggestions;
+				$.each( suggestions, function( key, value ) {
+					$("<li/>", {text:"... "+value}).appendTo($(".autocomplete ul"));
+				});
+				$(this).fadeIn();
+			});
+		},
+
+		updateSuggestionsPython: function(suggestions) {
+			console.log(suggestions);
+			//if (essayEditor.lastSuggestionsPython == suggestions) {
+			//	return;
+			//}
+			$(".python ul").fadeOut(function() {
+				$(".python ul").html("");
+				//essayEditor.lastSuggestionsPython = suggestions;
+				$.each( suggestions, function( key, value ) {
+					$("<li/>", {text:value}).appendTo($(".python ul"));
+				});
+				$(this).fadeIn();
+			});
+		}
+	};
+
+	setInterval(essayEditor.sendText, 10*1000/2);
+	var updateEvery;
+	$(".editable").bind('keydown', function(event){
+		essayEditor.updateBG();
+		clearTimeout(updateEvery);
+		updateEvery = setInterval(essayEditor.sendWords, 400);
+	});
+});
+</script>
+
+</head>
+<body>
+  <header>
+  	<h1>WonderText</h1>
+    <h5>Release your inner writer<br/>Boost your imagination</h5>
+  </header>
+	<article id="essay_editor">
+		<div class="essay editable">
+			<p></p>
+		</div>
+		<div class="essay editable_hidden">
+			<p>Begin your journey here...</p>
+		</div>
+	</article>
+	<div class="right">
+		<div class="suggestions autocomplete">
+			<h3>Suggestions</h3>
+			<ul></ul>
+		</div>
+		<div class="suggestions python">
+			<h3>Stat Analysis</h3>
+			<ul></ul>
+		</div>
+	</div>
+</body>
+</html>
